@@ -98,12 +98,11 @@ impl MemTable {
     /// In week 2, day 6, also flush the data to WAL.
     /// In week 3, day 5, modify the function to use the batch API.
     pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
+        let entry_size = _key.len() + _value.len();
         self.map
             .insert(Bytes::copy_from_slice(_key), Bytes::copy_from_slice(_value));
         self.approximate_size
-            .fetch_add(_key.len(), Ordering::Relaxed);
-        self.approximate_size
-            .fetch_add(_value.len(), Ordering::Relaxed);
+            .fetch_add(entry_size, Ordering::Relaxed);
         Ok(())
     }
 
