@@ -279,11 +279,20 @@ impl LsmStorageInner {
 
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
     pub fn get(&self, _key: &[u8]) -> Result<Option<Bytes>> {
-        if let Some(v) = self.state.read().memtable.get(_key) {
+        let guard = self.state.read();
+        if let Some(v) = guard.memtable.get(_key) {
             if v.is_empty() {
                 return Ok(None);
             }
             return Ok(Some(v));
+        }
+        for imm_memtable in &guard.imm_memtables {
+            if let Some(v) = imm_memtable.get(_key) {
+                if v.is_empty() {
+                    return Ok(None);
+                }
+                return Ok(Some(v));
+            }
         }
         Ok(None)
     }
@@ -297,11 +306,10 @@ impl LsmStorageInner {
     pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
         let state = self.state.read();
         let result = state.memtable.put(_key, _value);
-        let read = self.state.read();
         if state.memtable.approximate_size() >= self.options.target_sst_size {
-            drop(read);
             let guard = self.state_lock.lock();
             if state.memtable.approximate_size() >= self.options.target_sst_size {
+                drop(state);
                 self.force_freeze_memtable(&guard)?;
             }
         }
