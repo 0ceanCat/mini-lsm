@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use bytes::Bytes;
-use nom::combinator::value;
 use parking_lot::{Mutex, MutexGuard, RwLock};
 
 use crate::block::Block;
