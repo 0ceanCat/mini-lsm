@@ -95,7 +95,6 @@ where
 {
     let mut i = 0;
     for (k, v) in expected {
-        println!("index: {}", i);
         i += 1;
         assert!(iter.is_valid());
         assert_eq!(
