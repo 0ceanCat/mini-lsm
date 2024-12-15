@@ -93,9 +93,7 @@ pub fn check_iter_result_by_key<I>(iter: &mut I, expected: Vec<(Bytes, Bytes)>)
 where
     I: for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>,
 {
-    let mut i = 0;
     for (k, v) in expected {
-        i += 1;
         assert!(iter.is_valid());
         assert_eq!(
             k,
