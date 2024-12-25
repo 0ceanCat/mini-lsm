@@ -10,7 +10,7 @@ use super::StorageIterator;
 pub struct TwoMergeIterator<A: StorageIterator, B: StorageIterator> {
     a: A,
     b: B,
-    // Add fields as need
+    read_from_a: bool,
 }
 
 impl<
@@ -19,7 +19,20 @@ impl<
     > TwoMergeIterator<A, B>
 {
     pub fn create(a: A, b: B) -> Result<Self> {
-        unimplemented!()
+        let read_from_a = if a.is_valid() && b.is_valid() && a.key() <= b.key() {
+            true
+        } else if a.is_valid() && !b.is_valid() {
+            true
+        } else {
+            false
+        };
+
+        let mut iterator = TwoMergeIterator { a, b, read_from_a };
+        while iterator.b.is_valid() && iterator.a.is_valid() && iterator.b.key() == iterator.a.key()
+        {
+            iterator.b.next()?;
+        }
+        Ok(iterator)
     }
 }
 
@@ -30,19 +43,59 @@ impl<
 {
     type KeyType<'a> = A::KeyType<'a>;
 
-    fn key(&self) -> Self::KeyType<'_> {
-        unimplemented!()
+    fn value(&self) -> &[u8] {
+        if self.read_from_a {
+            self.a.value()
+        } else {
+            self.b.value()
+        }
     }
 
-    fn value(&self) -> &[u8] {
-        unimplemented!()
+    fn key(&self) -> Self::KeyType<'_> {
+        if self.read_from_a {
+            self.a.key()
+        } else {
+            self.b.key()
+        }
     }
 
     fn is_valid(&self) -> bool {
-        unimplemented!()
+        if self.read_from_a {
+            self.a.is_valid()
+        } else {
+            self.b.is_valid()
+        }
     }
 
     fn next(&mut self) -> Result<()> {
-        unimplemented!()
+        if self.read_from_a {
+            self.a.next()?;
+            if self.a.is_valid() {
+                while self.b.is_valid() && self.b.key() == self.a.key() {
+                    self.b.next()?;
+                }
+                if self.b.is_valid() && self.a.key() > self.b.key() {
+                    self.read_from_a = false;
+                }
+            } else {
+                self.read_from_a = false;
+            }
+        } else {
+            self.b.next()?;
+            if self.b.is_valid() {
+                while self.b.is_valid() && self.a.is_valid() && self.b.key() == self.a.key() {
+                    self.b.next()?;
+                }
+                if self.b.is_valid() && self.a.is_valid() && self.a.key() < self.b.key()
+                    || !self.b.is_valid()
+                {
+                    self.read_from_a = true;
+                }
+            } else {
+                self.read_from_a = true;
+            }
+        }
+
+        Ok(())
     }
 }
