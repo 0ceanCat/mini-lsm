@@ -203,7 +203,7 @@ impl SsTable {
     /// Read a block from disk, with block cache. (Day 4)
     pub fn read_block_cached(&self, block_idx: usize) -> Result<Arc<Block>> {
         if self.block_cache.is_none() {
-            return self.read_block_from_disk(block_idx)
+            return self.read_block_from_disk(block_idx);
         }
         match self
             .block_cache
@@ -217,15 +217,18 @@ impl SsTable {
         }
     }
 
+    pub fn find_block(&self, key: KeySlice) -> Result<Arc<Block>> {
+        let block_idx = self.find_block_idx(key);
+        self.read_block_cached(block_idx)
+    }
+
     /// Find the block that may contain `key`.
     /// Note: You may want to make use of the `first_key` stored in `BlockMeta`.
     /// You may also assume the key-value pairs stored in each consecutive block are sorted.
     pub fn find_block_idx(&self, key: KeySlice) -> usize {
-        println!("find_block_idx for key: {:?}", key);
         let key_vec = KeyVec::from(key.to_key_vec());
         let key = key_vec.into_key_bytes();
         let result = self.block_meta.binary_search_by(|b| {
-            println!("cmp with meta {:?}-{:?}", b.first_key, b.last_key);
             if key < b.first_key {
                 std::cmp::Ordering::Greater
             } else if key > b.last_key {
@@ -234,10 +237,7 @@ impl SsTable {
                 std::cmp::Ordering::Equal
             }
         });
-        let idx = match result {
-            Ok(idx) => idx,
-            Err(idx) => idx,
-        };
+        let idx = result.unwrap_or_else(|idx| idx);
 
         min(idx, self.block_meta.len() - 1)
     }

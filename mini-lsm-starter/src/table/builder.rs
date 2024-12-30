@@ -41,7 +41,7 @@ impl SsTableBuilder {
         if self.first_key.is_empty() {
             self.first_key = key.to_key_vec().into_inner();
         }
-        if !self.builder.add(key.clone(), value) {
+        if !self.builder.add(key, value) {
             self.push_block_to_buf();
             self.add(key, value);
             return;
