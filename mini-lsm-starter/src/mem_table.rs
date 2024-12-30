@@ -87,10 +87,7 @@ impl MemTable {
 
     /// Get a value by key.
     pub fn get(&self, _key: &[u8]) -> Option<Bytes> {
-        match self.map.get(_key) {
-            None => None,
-            Some(entry) => Some(entry.value().clone()),
-        }
+        self.map.get(_key).map(|entry| entry.value().clone())
     }
 
     /// Put a key-value pair into the mem-table.
@@ -121,12 +118,6 @@ impl MemTable {
 
     /// Get an iterator over a range of keys.
     pub fn scan(&self, _lower: Bound<&[u8]>, _upper: Bound<&[u8]>) -> MemTableIterator {
-        let x: Vec<(Bytes, Bytes)> = self
-            .map
-            .iter()
-            .map(|e| (e.key().clone(), e.value().clone()))
-            .collect();
-        println!("map {:p}: {:?}", self, x);
         let (lower, upper) = (map_bound(_lower), map_bound(_upper));
         let mut iter = MemTableIteratorBuilder {
             map: self.map.clone(),
@@ -135,11 +126,6 @@ impl MemTable {
         }
         .build();
         iter.next().unwrap();
-        println!(
-            "iter next with range: {:?}-{:?}",
-            iter.key().for_testing_key_ref(),
-            iter.value()
-        );
         iter
     }
 
@@ -201,6 +187,8 @@ impl StorageIterator for MemTableIterator {
     }
 
     fn is_valid(&self) -> bool {
+        //let key = self.key();
+        //println!("key: {:?}", key);
         !self.borrow_item().0.is_empty()
     }
 

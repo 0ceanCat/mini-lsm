@@ -1,13 +1,13 @@
 #![allow(dead_code)] // REMOVE THIS LINE after fully implementing this functionality
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::Read;
 use std::ops::Bound;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
-use crate::block::Block;
+use crate::block::{Block, BlockIterator};
 use crate::compact::{
     CompactionController, CompactionOptions, LeveledCompactionController, LeveledCompactionOptions,
     SimpleLeveledCompactionController, SimpleLeveledCompactionOptions, TieredCompactionController,
@@ -23,7 +23,6 @@ use crate::mvcc::LsmMvccInner;
 use crate::table::{SsTable, SsTableIterator};
 use anyhow::Result;
 use bytes::Bytes;
-use nom::AsBytes;
 use parking_lot::{Mutex, MutexGuard, RwLock};
 
 pub type BlockCache = moka::sync::Cache<(usize, usize), Arc<Block>>;
@@ -41,7 +40,7 @@ pub struct LsmStorageState {
     /// compaction.
     pub levels: Vec<(usize, Vec<usize>)>,
     /// SST objects.
-    pub sstables: HashMap<usize, Arc<SsTable>>,
+    pub sstables: BTreeMap<usize, Arc<SsTable>>,
 }
 
 pub enum WriteBatchRecord<T: AsRef<[u8]>> {
@@ -299,6 +298,23 @@ impl LsmStorageInner {
                 return Ok(Some(v));
             }
         }
+
+        let key = KeySlice::from_slice(_key);
+        for (_id, sstable) in guard.sstables.iter().rev() {
+            let block = sstable.find_block(key)?;
+            let iterator = BlockIterator::create_and_seek_to_key(block, key);
+            if !iterator.is_valid() {
+                return Ok(None);
+            }
+
+            if iterator.key() == key {
+                return if !iterator.value().is_empty() {
+                    Ok(Some(Bytes::copy_from_slice(iterator.value())))
+                } else {
+                    Ok(None)
+                };
+            }
+        }
         Ok(None)
     }
 
@@ -357,7 +373,6 @@ impl LsmStorageInner {
 
         let mut guard = self.state.write();
         let mut snapshot = guard.as_ref().clone();
-        println!("immetable {:p}", &*snapshot.memtable);
         snapshot.imm_memtables.insert(0, snapshot.memtable);
         snapshot.memtable = memtable;
 
@@ -385,7 +400,9 @@ impl LsmStorageInner {
         let guard = self.state.read();
         let vec = &guard.imm_memtables;
         let mut memtables_iter: Vec<Box<MemTableIterator>> = Vec::new();
+        println!("mem_table_scan");
         memtables_iter.push(Box::new(guard.memtable.scan(_lower, _upper)));
+        println!("imm_memtables");
         vec.iter()
             .for_each(|table| memtables_iter.push(Box::new(table.scan(_lower, _upper))));
         let key = match _lower {
@@ -393,12 +410,14 @@ impl LsmStorageInner {
             Bound::Excluded(u8_) => KeySlice::from_slice(u8_),
             Bound::Unbounded => KeySlice::from_slice(&[]),
         };
-        let sstables_iter: Vec<Box<SsTableIterator>> = guard
-            .sstables
+        let mut sstables: Vec<(&usize, &Arc<SsTable>)> = guard.sstables.iter().collect();
+        // sstable with bigger id is more recent
+        sstables.sort_by(|a, b| a.0.cmp(b.0).reverse());
+        let sstables_iter: Vec<Box<SsTableIterator>> = sstables
             .iter()
             .map(|(id, sstable)| {
                 let mut iterator =
-                    SsTableIterator::create_and_seek_to_key(sstable.clone(), key).unwrap();
+                    SsTableIterator::create_and_seek_to_key((**sstable).clone(), key).unwrap();
                 if let Bound::Excluded(_) = _lower {
                     if iterator.is_valid() && iterator.key() == key {
                         iterator.next().unwrap();
@@ -407,11 +426,12 @@ impl LsmStorageInner {
                 Box::new(iterator)
             })
             .collect();
-
+        println!("create mergeIterator for mem_iterator");
         let mem_iterator = MergeIterator::create(memtables_iter);
+        println!("create mergeIterator for sstable_iter");
         let sstable_iter = MergeIterator::create(sstables_iter);
 
-        let bound = _upper.map(|v| Bytes::copy_from_slice(v));
+        let bound = _upper.map(Bytes::copy_from_slice);
         Ok(FusedIterator::new(LsmIterator::new(
             TwoMergeIterator::create(mem_iterator, sstable_iter)?,
             bound,
