@@ -55,7 +55,7 @@ impl StorageIterator for LsmIterator {
     }
 
     fn value(&self) -> &[u8] {
-        self.inner.value().as_ref()
+        self.inner.value()
     }
 
     fn next(&mut self) -> Result<()> {

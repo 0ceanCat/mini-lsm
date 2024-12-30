@@ -21,10 +21,8 @@ impl<
     pub fn create(a: A, b: B) -> Result<Self> {
         let read_from_a = if a.is_valid() && b.is_valid() && a.key() <= b.key() {
             true
-        } else if a.is_valid() && !b.is_valid() {
-            true
         } else {
-            false
+            a.is_valid() && !b.is_valid()
         };
 
         let mut iterator = TwoMergeIterator { a, b, read_from_a };
